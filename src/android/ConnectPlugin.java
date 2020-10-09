@@ -3,10 +3,16 @@ package org.apache.cordova.facebook;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.Resources;
+import android.database.Cursor;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.service.media.MediaBrowserService;
 import android.util.Log;
 import android.webkit.WebView;
+import android.widget.Toast;
 
 import com.facebook.AccessToken;
 import com.facebook.CallbackManager;
@@ -34,6 +40,7 @@ import com.facebook.share.model.ShareOpenGraphContent;
 import com.facebook.share.widget.GameRequestDialog;
 import com.facebook.share.widget.MessageDialog;
 import com.facebook.share.widget.ShareDialog;
+import com.google.android.gms.tasks.OnCompleteListener;
 
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
@@ -53,8 +60,19 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
-public class ConnectPlugin extends CordovaPlugin {
+import bolts.AppLinks;
+
+import static com.facebook.FacebookSdk.getApplicationContext;
+
+interface RepositoryCallback<T> {
+    void onComplete(MediaBrowserService.Result<T> result);
+}
+
+
+public class ConnectPlugin extends CordovaPlugin  {
 
     private static final int INVALID_ERROR_CODE = -2; //-1 is FacebookRequestError.INVALID_ERROR_CODE
     private static final String PUBLISH_PERMISSION_PREFIX = "publish";
@@ -78,20 +96,60 @@ public class ConnectPlugin extends CordovaPlugin {
     private ShareDialog shareDialog;
     private GameRequestDialog gameRequestDialog;
     private MessageDialog messageDialog;
-    BooVariable bv = new BooVariable();
+    private boolean isInited = true;
+
+
+    class onFBInit extends AsyncTask<Void, Void, Void> {
+
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            Log.d(TAG, "BEGIN");
+        }
+
+        @Override
+        protected Void doInBackground(Void... params) {
+            try {
+                TimeUnit.SECONDS.sleep(2);
+                while (!check()) {
+                    check();
+                    Log.d(TAG,"NOT INITED");
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Void result) {
+            super.onPostExecute(result);
+           Log.d(TAG, "EXECUTED");
+           initFB();
+        }
+    }
+
+    onFBInit fbInit;
 
     @Override
     protected void pluginInitialize() {
         Log.d(TAG, "Start");
+        fbInit = new onFBInit();
+        fbInit.execute();
+        
+    }
 
+
+    public void onComplete(String myData) {
+       initFB();
     }
 
     public void initFB() {
-        FacebookSdk.sdkInitialize(cordova.getActivity().getApplicationContext());
-        FacebookSdk.setAutoInitEnabled(true);
-        FacebookSdk.setAutoLogAppEventsEnabled(true);
-        FacebookSdk.fullyInitialize();
-        // create callbackManager
+        // FacebookSdk.sdkInitialize(cordova.getActivity().getApplicationContext());
+        // FacebookSdk.setAutoInitEnabled(true);
+        // FacebookSdk.setAutoLogAppEventsEnabled(true);
+        // FacebookSdk.fullyInitialize();
+        // // create callbackManager
         callbackManager = CallbackManager.Factory.create();
 
         // create AppEventsLogger
@@ -282,12 +340,14 @@ public class ConnectPlugin extends CordovaPlugin {
             return true;
 
         } else if (action.equals("getAccessToken")) {
-            if (hasAccessToken()) {
+            if (hasAccessToken() && FacebookSdk.isInitialized()) {
                 callbackContext.success(AccessToken.getCurrentAccessToken().getToken());
             } else {
                 // Session not open
-                callbackContext.error("Session not open.");
+                callbackContext.error("Session not open." + FacebookSdk.isInitialized());
             }
+
+
             return true;
 
         } else if (action.equals("logEvent")) {
@@ -320,6 +380,9 @@ public class ConnectPlugin extends CordovaPlugin {
         } else if (action.equals("getDeferredApplink")) {
             executeGetDeferredApplink(args, callbackContext);
             return true;
+        } else if (action.equals("getDeep")) {
+            executeGetDeep(args, callbackContext);
+            return true;
         } else if (action.equals("activateApp")) {
             cordova.getThreadPool().execute(new Runnable() {
                 @Override
@@ -333,6 +396,15 @@ public class ConnectPlugin extends CordovaPlugin {
             return true;
         }
         return false;
+    }
+    private void executeGetDeep(JSONArray args,
+                                           final CallbackContext callbackContext) {
+        Uri targetUrl = AppLinks.getTargetUrlFromInboundIntent(cordova.getActivity().getApplicationContext(), cordova.getActivity().getIntent());
+        PluginResult pr;
+        pr = new PluginResult(PluginResult.Status.OK, String.valueOf(targetUrl));
+        callbackContext.sendPluginResult(pr);
+        return;
+
     }
 
     private void executeGetDeferredApplink(JSONArray args,
@@ -673,6 +745,8 @@ public class ConnectPlugin extends CordovaPlugin {
                 }
                 PluginResult pr = new PluginResult(PluginResult.Status.OK, appId);
                 callbackContext.sendPluginResult(pr);
+
+                
 
             }
         };

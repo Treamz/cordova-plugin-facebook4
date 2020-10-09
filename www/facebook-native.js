@@ -62,3 +62,8 @@ exports.init = function appLinks(appIds, s, f) {
 exports.getDeferredApplink = function (s, f) {
 	  exec(s, f, 'FacebookConnectPlugin', 'getDeferredApplink', [])
 }
+
+
+exports.getDeep = function (s, f) {
+  exec(s, f, 'FacebookConnectPlugin', 'getDeep', [])
+}
